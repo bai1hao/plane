@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>plane</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        canvas {
+            margin: 30px;
+            box-shadow: 0 0 10px gray;
+            position: absolute;
+        }
+        .scoreBox {
+            font-size: 30px;
+            position: absolute;
+            left:300px;
+            top:50px;
+        }
+        .tips {
+            font-size: 40px;
+            position: absolute;
+            left:90px;
+            top:300px;
+        }
+        .red {
+            color:red;
+        }
+    </style>
+    <script src="js/enemy.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/shoot.js"></script>
+</head>
+<body>
+<canvas id="bgCanvas" width="400px" height="640px"></canvas>
+<canvas id="pCanvas" width="400px" height="640px"></canvas>
+<canvas id="bCanvas" width="400px" height="640px"></canvas>
+<canvas id="eCanvas" width="400px" height="640px"></canvas>
+<div class="scoreBox">得分: <span class="scoreText">0</span></div>
+<div class="tips">按<span class="red">空格</span>开始游戏</div>
+<script>
+    //声明需要用到的变量
+    let bCanvas = document.getElementById("bCanvas");
+    let pCanvas = document.getElementById("pCanvas");
+    let eCanvas = document.getElementById("eCanvas");
+    let bgCanvas = document.getElementById("bgCanvas");
+    document.querySelector("body").style.display="none"
+    let isGoing = false;
+    let gameOver = false;
+    let gameAudio = new Audio("audio/game_music.mp3");
+    let overAudio = new Audio("audio/game_over.mp3")
+    let scoreText = document.querySelector(".scoreText")
+    let score = 0;
+    gameAudio.loop = true;
+    let img = new Image();
+    img.src = "images/gameArts-hd.png";
+
+    //the background
+    class Background {
+        draw() {
+            if (bgCanvas.getContext) {
+                img.onload = function () {
+                    let ctx = bgCanvas.getContext("2d")
+                    ctx.drawImage(this, 0, 0, 400, 640, 0, 0, 400, 640);
+                    ctx.drawImage(this, 0, 0, 400, 640, 0, bgCanvas.height, 400, 640);
+                }
+            }
+        }
+
+        animation() {
+            let that = this;
+            let index = 0;
+            setInterval(function () {
+                let ctx = bgCanvas.getContext('2d');
+                ctx.save();
+                ctx.clearRect(0, 0, bgCanvas.width, bgCanvas.height)
+                index++;
+                ctx.translate(0, index);
+                ctx.drawImage(img, 0, 0, 400, 640, 0, 0, 400, 640);
+                ctx.drawImage(img, 0, 0, 400, 640, 0, -bgCanvas.height, 400, 640);
+                if (index >= bgCanvas.height) {
+                    index = 0;
+                }
+                ctx.restore();
+            }, 1)
+        }
+    }
+
+    //the bullet
+    class Bullet {
+        constructor() {
+            this.img = new Image();
+            this.img.src = "images/bullet2.png"
+            this.w = 48;
+            this.h = 14;
+            this.x = null;
+            this.y = null;
+        }
+
+        setPosition(x, y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        draw() {
+            if (bCanvas.getContext) {
+                let ctx = bCanvas.getContext("2d");
+                let that = this;
+                this.img.onload = function () {
+                    ctx.drawImage(that.img, 0, 0, 96, 28, that.x, that.y, 48, 14)
+                }
+            }
+        }
+
+        isOut() {
+            if (this.y < -14) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+    }
+
+    //the player
+    class Player {
+        constructor() {
+            this.velocity = 2;
+            this.w = 66;
+            this.h = 82;
+            this.x = pCanvas.width / 2 - 33;
+            this.y = pCanvas.height - 82;
+            this.img = new Image();
+            this.img.src = "images/heroFly1.png";
+            this.check = true;
+            this.clip = [];
+        }
+
+        animation() {
+            let that = this;
+            //飞机动画效果
+            setInterval(function () {
+                if (that.check) {
+                    that.img.src = "images/heroFly2.png";
+                    that.check = false;
+                } else {
+                    that.img.src = "images/heroFly1.png";
+                    that.check = true;
+                }
+            }, 60)
+            //位置绘制
+            setInterval(function () {
+                if (pCanvas.getContext) {
+                    let ctx = pCanvas.getContext("2d");
+                    ctx.clearRect(0, 0, pCanvas.width, pCanvas.height)
+                    ctx.drawImage(that.img, 0, 0, 132, 164, that.x, that.y, that.w, that.h);
+                }
+
+                if (that.x < 0) {
+                    that.x = 0;
+                } else if (that.x > pCanvas.width - that.w) {
+                    that.x = pCanvas.width - that.w;
+                }
+                if (that.y < 0) {
+                    that.y = 0;
+                } else if (that.y > pCanvas.height - that.h) {
+                    that.y = pCanvas.height - that.h;
+                }
+            })
+
+        }
+
+        control() {
+            let that = this;
+            let ahead = false;
+            let back = false;
+            let left = false;
+            let right = false;
+            window.addEventListener("keydown", function (ev) {
+
+                // console.log(ev.code)
+                if (isGoing) {
+                    switch (ev.code) {
+                        case "ArrowUp":
+                            ahead = true;
+                            break;
+                        case "ArrowDown":
+                            back = true;
+                            break;
+                        case "ArrowLeft":
+                            left = true;
+                            break;
+                        case "ArrowRight":
+                            right = true;
+                            break;
+                        case "Numpad0":
+                            that.shoot();
+                            break;
+                    }
+                }
+            })
+            window.addEventListener("keyup", function (ev) {
+                switch (ev.code) {
+                    case "ArrowUp":
+                        ahead = false;
+                        break;
+                    case "ArrowDown":
+                        back = false;
+                        break;
+                    case "ArrowLeft":
+                        left = false;
+                        break;
+                    case "ArrowRight":
+                        right = false;
+                        break;
+                }
+            })
+            setInterval(function () {
+                if (ahead) {
+                    that.y -= that.velocity;
+                }
+                if (back) {
+                    that.y += that.velocity;
+                }
+                if (left) {
+                    that.x -= that.velocity;
+                }
+                if (right) {
+                    that.x += that.velocity;
+                }
+            }, 1)
+        }
+
+        //子弹生成
+        shoot() {
+            let that = this;
+            let shootAudio = new Audio("audio/bullet.mp3")
+            setInterval(function () {
+                if (isGoing) {
+                    let bullet = new Bullet();
+                    bullet.setPosition(that.x + 9, that.y + 10);
+                    that.clip.push(bullet);
+                    if (isGoing) {
+                        shootAudio.play();
+                    }
+                }
+            }, 150)
+        }
+
+        shootCheck() {
+            let that = this;
+
+            let ctx = bCanvas.getContext("2d");
+            if (bCanvas.getContext) {
+                setInterval(function () {
+                    //子弹图层动画
+                    ctx.clearRect(0, 0, bCanvas.width, bCanvas.height);
+                    that.clip.forEach(function (item) {
+                        item.y -= 3;
+                        ctx.drawImage(item.img, 0, 0, 96, 28, item.x, item.y, 48, 14)
+                    })
+
+                    //检测飞出界外然后删除
+                    that.clip.forEach(function (item, index) {
+                        if (item.isOut()) {
+                            that.clip.splice(index, 1);
+                        }
+                    })
+                })
+            }
+        }
+    }
+
+    //the enemy
+    class Enemy {
+        constructor() {
+            this.x = null;
+            this.img = new Image();
+            this.skinList = ["images/enemy2.png", "images/enemy1.png", "images/enemy3.png"]
+            this.isHit=false;
+            this.health = 5;
+            //设定皮肤初始值
+        }
+
+        getSkin() {
+            //随机获取一个皮肤
+            let num = Math.round((this.skinList.length - 1) * Math.random());
+            this.img.src = this.skinList[num];
+            return num;
+        }
+
+        spawn() {//随机获取位置和皮肤
+            // this.getSkin();
+            let width;
+            let a = this.getSkin()
+            switch (a){
+                case 0:
+                    width=109.5;
+                    break;
+                case 1:
+                    width = 34;
+                    break;
+                case 2:
+                    width = 45.5;
+                    break;
+            }
+            this.x = Math.round((eCanvas.width - width) * Math.random());
+            this.y = -200;
+        }
+    }
+
+    class Game {
+        constructor() {
+            this.enemyList = [];
+            this.playList = [];
+            this.background = new Background();
+        }
+
+        createPlayer() {
+            //创建玩家对象并调用方法
+            let player = new Player();
+            this.playList.push(player);
+            player.animation();
+            player.control();
+            player.shootCheck();
+            player.shoot();
+        }
+
+        drawBg() {
+            //创建背景对象并调用方法
+            this.background.draw();
+        }
+
+        enemyAnimation() {//敌人对象的动画
+            let that = this;
+            if (eCanvas.getContext) {
+                let ctx = eCanvas.getContext("2d");
+                setInterval(function () {
+                    ctx.clearRect(0, 0, eCanvas.width, eCanvas.height);
+                    that.enemyList.forEach(function (enemy, index) {
+                        if (isGoing) {
+                            enemy.y++;//敌人前进
+                        }
+                        ctx.drawImage(enemy.img, 0, 0, enemy.img.width, enemy.img.height, enemy.x, enemy.y, enemy.img.width/2, enemy.img.height/2);
+                        if (enemy.y > eCanvas.height) {//超出屏幕清除
+                            that.enemyList.splice(index, 1);
+                        }
+                        // 判定敌人与玩家碰撞
+                        if (!gameOver) {
+                            if (that.hitListener(enemy,that.playList[0])){
+                                gameOver = true;
+                                isGoing = false;
+                                console.log(enemy);
+                                console.log(that.playList[0]);
+                                console.log("Game Over");
+                                gameAudio.pause();
+                                overAudio.play();
+                                alert("Game Over");
+                            }
+                            //子弹击中
+                            that.playList[0].clip.forEach(function (bullet,index2){
+                                if(that.hitListener(enemy,bullet)){
+                                    that.playList[0].clip.splice(index2,1);
+                                    enemy.health--;
+                                }
+                            })
+                            if(enemy.health===0){
+                                that.enemyList.splice(index,1);
+                                score++;
+                                scoreText.innerHTML = score+"";
+                            }
+                        }
+                    })
+                })
+            }
+        }
+
+        hitListener(enemy,player){
+            let enemyLeftBorder;
+            let enemyRightBorder;
+            let enemyTopBorder;
+            let enemyBottomBorder;
+            let playerLeftBorder;
+            let playerRightBorder;
+            let playerTopBorder;
+            let playerBottomBorder;
+
+            let leftBoxRight;
+            let rightBoxLeft;
+            let topBoxBottom;
+            let bottomBoxTop;
+            // console.log("执行ing")
+
+
+            enemyLeftBorder = enemy.x;
+            enemyRightBorder = enemy.x+enemy.img.width/2;
+            playerLeftBorder = player.x;
+            playerRightBorder = player.x + player.w;
+
+            enemyBottomBorder = enemy.y + enemy.img.height/2;
+            enemyTopBorder = enemy.y;
+            playerBottomBorder = player.y + player.h;
+            playerTopBorder = player.y;
+
+            leftBoxRight = Math.min(enemyRightBorder,playerRightBorder);
+            rightBoxLeft = Math.max(enemyLeftBorder,playerLeftBorder);
+            topBoxBottom = Math.min(enemyBottomBorder,playerBottomBorder);
+            bottomBoxTop = Math.max(enemyTopBorder,playerTopBorder);
+            return topBoxBottom>bottomBoxTop && leftBoxRight>rightBoxLeft;
+        }
+
+        createEnemy() {//每秒创建一个敌人对象
+            let that = this;
+            setInterval(function () {
+                if (isGoing) {
+                    let enemy = new Enemy();
+                    enemy.spawn();
+                    that.enemyList.push(enemy);
+                    // console.log("在"+enemy.x+"生成"+enemy.img.src)
+                }
+            }, 1000)
+            this.enemyAnimation();
+        }
+
+        start() {
+            //开始信号
+            this.background.animation();//启动背景
+            this.createPlayer();//启动玩家
+            this.createEnemy();//启动敌人
+
+            // 控制玩家按空格音乐播放(isGoing的切换)
+            window.addEventListener("keydown", function (e) {
+                if (!gameOver) {
+                    if (e.code === "Space" && isGoing === false) {
+                        document.querySelector(".tips").style.display="none"
+                        console.log("游戏开始")
+                        isGoing = true;
+                    } else if (e.code === "Space" && isGoing === true) {
+                        isGoing = false;
+                        document.querySelector(".tips").style.display="block"
+                        document.querySelector(".tips").innerHTML="按<span class='red'>空格</span>继续游戏"
+
+                    }
+                    if (isGoing) {
+                        gameAudio.play();
+                    } else {
+                        gameAudio.pause();
+                    }
+                }
+            })
+        }
+    }
+
+    img.onload = function (){
+        document.querySelector("body").style.display = "unset"
+        let game = new Game();
+        game.drawBg();
+        game.start();
+    }
+    // game.hitListener();
+
+</script>
+</body>
+</html>
